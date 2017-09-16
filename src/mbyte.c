@@ -163,8 +163,8 @@ static char utf8len_tab[256] =
     1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
     1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
     1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-    2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,
-    3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4,4,5,5,5,5,6,6,1,1,
+    1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,
+    3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4,4,4,4,4,1,1,1,1,1,1,1,1,1,1,1,
 };
 
 /*
@@ -178,8 +178,8 @@ static char utf8len_tab_zero[256] =
     1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
     0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,
-    3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4,4,5,5,5,5,6,6,0,0,
+    0,0,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,
+    3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4,4,4,4,4,0,0,0,0,0,0,0,0,0,0,0,
 };
 
 /*
@@ -1788,7 +1788,7 @@ dbcs_ptr2char(char_u *p)
     int
 utf_ptr2char(char_u *p)
 {
-    int		len;
+    int		len, c;
 
     if (p[0] < 0x80)	/* be quick for ASCII */
 	return p[0];
@@ -1796,28 +1796,20 @@ utf_ptr2char(char_u *p)
     len = utf8len_tab_zero[p[0]];
     if (len > 1 && (p[1] & 0xc0) == 0x80)
     {
-	if (len == 2)
+	if (len == 2) {
 	    return ((p[0] & 0x1f) << 6) + (p[1] & 0x3f);
-	if ((p[2] & 0xc0) == 0x80)
-	{
-	    if (len == 3)
-		return ((p[0] & 0x0f) << 12) + ((p[1] & 0x3f) << 6)
+	} else if ((p[2] & 0xc0) == 0x80) {
+	    if (len == 3) {
+		c = ((p[0] & 0x0f) << 12) + ((p[1] & 0x3f) << 6)
 		    + (p[2] & 0x3f);
-	    if ((p[3] & 0xc0) == 0x80)
-	    {
-		if (len == 4)
-		    return ((p[0] & 0x07) << 18) + ((p[1] & 0x3f) << 12)
-			+ ((p[2] & 0x3f) << 6) + (p[3] & 0x3f);
-		if ((p[4] & 0xc0) == 0x80)
-		{
-		    if (len == 5)
-			return ((p[0] & 0x03) << 24) + ((p[1] & 0x3f) << 18)
-			    + ((p[2] & 0x3f) << 12) + ((p[3] & 0x3f) << 6)
-			    + (p[4] & 0x3f);
-		    if ((p[5] & 0xc0) == 0x80 && len == 6)
-			return ((p[0] & 0x01) << 30) + ((p[1] & 0x3f) << 24)
-			    + ((p[2] & 0x3f) << 18) + ((p[3] & 0x3f) << 12)
-			    + ((p[4] & 0x3f) << 6) + (p[5] & 0x3f);
+		if (c >= 0x800) {
+		    return c;
+		}
+	    } else if (len == 4 && (p[3] & 0xc0) == 0x80) {
+		c = ((p[0] & 0x07) << 18) + ((p[1] & 0x3f) << 12)
+		  + ((p[2] & 0x3f) << 6) + (p[3] & 0x3f);
+		if (c >= 0x10000 && c < 0x110000) {
+		    return c;
 		}
 	    }
 	}
@@ -2088,6 +2080,12 @@ utf_ptr2len(char_u *p)
     for (i = 1; i < len; ++i)
 	if ((p[i] & 0xc0) != 0x80)
 	    return 1;
+    if ((p[0] == 0xe0 && p[1] < 0xa0)
+	 || (p[0] == 0xf0 && p[1] < 0x90)
+	 || (p[0] == 0xf4 && p[1] >= 0x90)) {
+	// overlong or out of range
+	return 1;
+    }
     return len;
 }
 
@@ -2127,6 +2125,12 @@ utf_ptr2len_len(char_u *p, int size)
     for (i = 1; i < m; ++i)
 	if ((p[i] & 0xc0) != 0x80)
 	    return 1;
+    if (m >= 2 && ((p[0] == 0xe0 && p[1] < 0xa0)
+                   || (p[0] == 0xf0 && p[1] < 0x90)
+                   || (p[0] == 0xf4 && p[1] >= 0x90))) {
+      // overlong or out of range
+      return 1;
+    }
     return len;
 }
 
@@ -2248,11 +2252,11 @@ utf_char2len(int c)
 	return 2;
     if (c < 0x10000)
 	return 3;
-    if (c < 0x200000)
+    if (c < 0x110000)
 	return 4;
-    if (c < 0x4000000)
-	return 5;
-    return 6;
+
+    // invalid codepoint represented as replacement char
+    return 3;
 }
 
 /*
@@ -2280,7 +2284,7 @@ utf_char2bytes(int c, char_u *buf)
 	buf[2] = 0x80 + (c & 0x3f);
 	return 3;
     }
-    if (c < 0x200000)		/* 21 bits */
+    if (c < 0x110000)		/* 21 bits */
     {
 	buf[0] = 0xf0 + ((unsigned)c >> 18);
 	buf[1] = 0x80 + (((unsigned)c >> 12) & 0x3f);
@@ -2288,23 +2292,12 @@ utf_char2bytes(int c, char_u *buf)
 	buf[3] = 0x80 + (c & 0x3f);
 	return 4;
     }
-    if (c < 0x4000000)		/* 26 bits */
-    {
-	buf[0] = 0xf8 + ((unsigned)c >> 24);
-	buf[1] = 0x80 + (((unsigned)c >> 18) & 0x3f);
-	buf[2] = 0x80 + (((unsigned)c >> 12) & 0x3f);
-	buf[3] = 0x80 + (((unsigned)c >> 6) & 0x3f);
-	buf[4] = 0x80 + (c & 0x3f);
-	return 5;
-    }
-				/* 31 bits */
-    buf[0] = 0xfc + ((unsigned)c >> 30);
-    buf[1] = 0x80 + (((unsigned)c >> 24) & 0x3f);
-    buf[2] = 0x80 + (((unsigned)c >> 18) & 0x3f);
-    buf[3] = 0x80 + (((unsigned)c >> 12) & 0x3f);
-    buf[4] = 0x80 + (((unsigned)c >> 6) & 0x3f);
-    buf[5] = 0x80 + (c & 0x3f);
-    return 6;
+
+    // invalid codepoint represented as replacement char
+    buf[0] = 0xef;
+    buf[1] = 0xbf;
+    buf[2] = 0xbd;
+    return 3;
 }
 
 #if defined(FEAT_TERMINAL) || defined(PROTO)
@@ -3843,7 +3836,7 @@ utf_head_off(char_u *base, char_u *p)
 	    --q;
 	/* Check for illegal sequence. Do allow an illegal byte after where we
 	 * started. */
-	len = utf8len_tab[*q];
+	len = utf_ptr2len(q);
 	if (len != (int)(s - q + 1) && len != (int)(p - q + 1))
 	    return 0;
 
@@ -3911,7 +3904,7 @@ mb_off_next(char_u *base, char_u *p)
 	    for (j = 0; p - j > base; ++j)
 		if ((p[-j] & 0xc0) != 0x80)
 		    break;
-	    if (utf8len_tab[p[-j]] != i + j)
+	    if (utf_ptr2len(p-j) != i + j)
 		return 0;
 	}
 	return i;
@@ -3944,7 +3937,7 @@ mb_tail_off(char_u *base, char_u *p)
 	for (j = 0; p - j > base; ++j)
 	    if ((p[-j] & 0xc0) != 0x80)
 		break;
-	if (utf8len_tab[p[-j]] != i + j + 1)
+	if (utf_ptr2len(p-j) != i + j + 1)
 	    return 0;
 	return i;
     }
