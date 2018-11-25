@@ -140,7 +140,7 @@ redraw_for_cursorline(win_T *wp)
 	    && !pum_visible()
 # endif
 	    )
-	redraw_win_later(wp, SOME_VALID);
+	redraw_win_later(wp, wp->w_p_rnu ? SOME_VALID : VALID);
 }
 
 /*
